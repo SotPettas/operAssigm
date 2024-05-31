@@ -1,0 +1,82 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+
+#define PORT 8080
+#define MAX_BUFFER_SIZE 1024
+#define MAX_FILENAME_LENGTH 256
+#define MAX_FILEPATH_LENGTH 1024
+
+int main() {
+    int sock = 0;
+    struct sockaddr_in serv_addr;
+    char filename[MAX_FILENAME_LENGTH];
+    char buffer[MAX_BUFFER_SIZE] = {0};
+    char choice;
+
+    // Δημιουργία socket
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        perror("socket creation error");
+        return -1;
+    }
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(PORT);
+
+    if (inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr) <= 0) {
+        perror("invalid address/ address not supported");
+        return -1;
+    }
+
+    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        perror("connection failed");
+        return -1;
+    }
+
+    // Αποστολή μηνύματος χαιρετισμού στον διακομιστή
+    char *greeting = "Hello from client";
+    send(sock, greeting, strlen(greeting), 0);
+
+    // Λήψη μηνύματος χαιρετισμού από τον διακομιστή
+    recv(sock, buffer, MAX_BUFFER_SIZE, 0);
+    printf("Server: %s\n", buffer);
+
+    do {
+        // Ζήτηση ονόματος αρχείου από τον χρήστη
+        printf("Please enter the name of the file: ");
+        scanf("%255s", filename); // Διασφάλιση ότι δεν θα υπερβεί το μέγιστο μήκος
+
+        // Αποστολή ονόματος αρχείου στον διακομιστή
+        send(sock, filename, strlen(filename), 0);
+
+        // Δημιουργία μονοπατιού για τον νέο φάκελο
+        char new_filepath[MAX_FILEPATH_LENGTH];
+        snprintf(new_filepath, sizeof(new_filepath), "downloaded/%s", filename); // Αποθήκευση με το ίδιο όνομα στον φάκελο downloads
+        FILE *file = fopen(new_filepath, "wb");
+        if (file == NULL) {
+            perror("file open error");
+            continue;
+        }
+
+        int bytes_received;
+        while ((bytes_received = recv(sock, buffer, MAX_BUFFER_SIZE, 0)) > 0) {
+            fwrite(buffer, 1, bytes_received, file);
+        }
+
+        fclose(file);
+
+        // Ενημέρωση του χρήστη ότι η αποθήκευση του αρχείου ολοκληρώθηκε
+        printf("File %s saved successfully.\n", filename);
+
+        // Ρώτησε τον χρήστη αν θέλει να ζητήσει άλλο αρχείο
+        printf("Do you want to request another file? (y/n): ");
+        scanf(" %c", &choice);
+
+    } while (choice == 'y' || choice == 'Y');
+
+    close(sock);
+    return 0;
+}
